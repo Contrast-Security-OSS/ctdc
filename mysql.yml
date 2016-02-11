@@ -1,0 +1,41 @@
+- hosts: mysql
+  sudo: True
+  tasks:
+  - name: Add MySQL deb repo
+    sudo: True
+    apt_repository: repo='deb http://repo.mysql.com/apt/ubuntu/ trusty mysql-5.6' state=present
+
+  - name: Accept gpg key
+    sudo: True
+    apt_key: data="{{ lookup('file', 'mysql_pubkey.asc') }}" state=present
+
+  - name: apt-get update
+    sudo: True
+    apt: update_cache=yes
+
+  - name: install mysql packages
+    sudo: True
+    apt: pkg={{ item }} state=latest
+    with_items:
+      - mysql-server
+      - mysql-client
+      - python-mysqldb
+
+  - name: Change bind_address = *
+    replace: dest=/etc/mysql/my.cnf regexp='127\.0\.0\.1' replace='*'
+
+  - name: Create remote user
+    mysql_user: >
+      login_user=root
+      login_password=
+      name=contrast
+      host=%
+      password=cHaNgEmE
+      priv=*.*:ALL,GRANT
+      state=present
+
+  - name: Create schema 'contrast'
+    mysql_db: name=contrast state=present
+
+  - name: restart mysql
+    service: name=mysql state=restarted

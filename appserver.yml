@@ -1,0 +1,59 @@
+- hosts: appserver
+  sudo: True
+  vars:
+    contrast_local_artifact_path: /tmp/ctdc
+    contrast_war: contrast-teamserver-3.2.4.war
+    contrast_data_dir: /opt/contrast-data
+    eop_config: migrate
+    filename_extension: tar.gz
+    java_opts: "-XX:+UseTLAB -XX:+UseCompressedOops -XX:+UseConcMarkSweepGC -XX:+UseParNewGC -XX:CMSFullGCsBeforeCompaction=1 -XX:+CMSParallelRemarkEnabled -XX:+PrintVMOptions -XX:+PrintCommandLineFlags -Xmx2g -Xms2g -server -XX:MaxPermSize=768m -Dcontrast.data.dir={{ contrast_data_dir }} -Dcontrast.home={{ contrast_data_dir }} -XX:+HeapDumpOnOutOfMemoryError -Xloggc:{{ contrast_data_dir }}/gc.out"
+  tasks:
+  - name: Install Tomcat7 Software
+    apt: name=tomcat7 update_cache=yes state=present
+
+  - name: add java repository to sources
+    action: shell add-apt-repository -y ppa:webupd8team/java
+
+  - name: autoaccept license for java
+    action: shell echo oracle-java7-installer shared/accepted-oracle-license-v1-1 select true | sudo /usr/bin/debconf-set-selections
+
+  - name: update apt package cache
+    apt: update_cache=yes
+
+  - name: install java 7 from oracle via apt
+    apt: name=oracle-java7-installer state=latest install_recommends=yes
+
+  - name: set oracle java 7 as default jvm
+    apt: name=oracle-java7-set-default state=latest install_recommends=yes
+
+  - name: Move local files to virtual machine
+    copy: src={{ contrast_local_artifact_path }}/{{ contrast_war }} dest=/opt/ mode=0655 backup=yes
+
+  - name: Create contrast-data directory
+    file: path={{ contrast_data_dir }} state=directory mode=0755 owner=tomcat7 group=tomcat7 recurse=yes
+
+  - name: Unarchive configuration directory
+    unarchive: copy=yes src={{ contrast_local_artifact_path}}/{{ eop_config }}.{{ filename_extension }} dest={{ contrast_data_dir }} owner=tomcat7 group=tomcat7
+
+  - name: Establish Permissions for contrast-data directory
+    file: path={{ contrast_data_dir }} state=directory mode=0755 owner=tomcat7 group=tomcat7 recurse=yes
+
+  - name: Create symlink to war (very important that warname is "Contrast.war")
+    file: >
+      state=link
+      src=/opt/{{ contrast_war }}
+      dest=/var/lib/tomcat7/webapps/Contrast.war
+      owner=tomcat7
+      group=tomcat7
+      force=yes
+
+  - name: Set JAVA_OPTS
+    replace: >
+      dest=/etc/default/tomcat7
+      regexp='JAVA_OPTS="-Djava\.awt\.headless=true -Xmx128m -XX:\+UseConcMarkSweepGC"'
+      replace='JAVA_OPTS="{{ java_opts }}"'
+
+  - name: Restart tomcat7
+    service: name=tomcat7 state=restarted
+
+
